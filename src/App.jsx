@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Area, AreaChart
 } from "recharts";
-
+import { exportDXF } from "./utils/exportDXF.js";
 // ─── TYPES & CONSTANTS ──────────────────────────────────────────────────────
 const SURVEY_TYPES = [
   { id: "simple", label: "Simple Leveling", icon: "📏", desc: "Basic HI method for flat terrain" },
@@ -33,9 +33,9 @@ const GLOSSARY = {
 
 // ─── DB (SIMULATED WITH localStorage) ────────────────────────────────────────
 const DB = {
-  save: (key, data) => { try { localStorage.setItem(`ssai_${key}`, JSON.stringify(data)); } catch(e){} },
-  load: (key) => { try { const d = localStorage.getItem(`ssai_${key}`); return d ? JSON.parse(d) : null; } catch(e){ return null; } },
-  del: (key) => { try { localStorage.removeItem(`ssai_${key}`); } catch(e){} },
+  save: (key, data) => { try { localStorage.setItem(`ssai_${key}`, JSON.stringify(data)); } catch (e) { } },
+  load: (key) => { try { const d = localStorage.getItem(`ssai_${key}`); return d ? JSON.parse(d) : null; } catch (e) { return null; } },
+  del: (key) => { try { localStorage.removeItem(`ssai_${key}`); } catch (e) { } },
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
@@ -58,15 +58,12 @@ function computeLeveling(rows, bmElevation) {
       rl = num(bmElevation) ?? 100.000;
       if (bs != null) { hiVal = rl + bs; }
     } else {
-      if (fs != null && lastRL != null) {
-        // TP: new HI from previous RL minus this FS? No — FS closes previous setup
-        // Then BS opens new setup
-      }
-      // RL from previous HI
-      if (is != null && hi != null) rl = hi - is;
-      else if (fs != null && hi != null) rl = hi - fs;
+      // FS closes the previous setup → compute RL from current HI
+      if (fs != null && hi != null) rl = hi - fs;
+      else if (is != null && hi != null) rl = hi - is;
       else rl = lastRL;
 
+      // BS opens a new setup → new HI based on this RL
       if (bs != null) hiVal = rl + bs;
     }
 
@@ -247,6 +244,14 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
     a.download = "survey_data.json"; a.click();
   };
 
+  const exportDXFFile = () => {
+    exportDXF(computed.rows, bm, {
+      surveyName: project?.name || surveyType?.label || "Survey",
+      method: method === "hi" ? "Height of Instrument" : "Rise & Fall",
+      closureError: computed.closureError,
+      totalDist,
+    });
+  };
   const TABS = ["input", "results", "profile", "analysis", "export"];
 
   return (
@@ -313,12 +318,12 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
                       ["BS ℹ", "IS ℹ", "FS ℹ"] :
                       ["BS", "IS", "FS"]),
                       "Chainage", "Dist", "Remarks", ""].map((h, i) => (
-                      <th key={i} className="px-1.5 py-1.5 text-left font-mono">
-                        {beginner && ["BS ℹ", "IS ℹ", "FS ℹ"].includes(h) ? (
-                          <Tooltip2 text={GLOSSARY[h.replace(" ℹ", "")]}>{h}</Tooltip2>
-                        ) : h}
-                      </th>
-                    ))}
+                        <th key={i} className="px-1.5 py-1.5 text-left font-mono">
+                          {beginner && ["BS ℹ", "IS ℹ", "FS ℹ"].includes(h) ? (
+                            <Tooltip2 text={GLOSSARY[h.replace(" ℹ", "")]}>{h}</Tooltip2>
+                          ) : h}
+                        </th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -361,13 +366,13 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
                     {["Station", "BS", "IS", "FS", "HI", "RL",
                       ...(method === "rf" ? ["Rise", "Fall"] : []),
                       "Chainage", "Remarks"].map(h => (
-                      <th key={h} className={`px-2 py-2 text-left font-mono font-bold
+                        <th key={h} className={`px-2 py-2 text-left font-mono font-bold
                         ${h === "BS" ? "text-green-400" : h === "FS" ? "text-red-400" : h === "IS" ? "text-yellow-400" :
-                          h === "HI" ? "text-purple-400" : h === "RL" ? "text-blue-400" :
-                          h === "Rise" ? "text-emerald-400" : h === "Fall" ? "text-orange-400" : "text-slate-400"}`}>
-                        {h}
-                      </th>
-                    ))}
+                            h === "HI" ? "text-purple-400" : h === "RL" ? "text-blue-400" :
+                              h === "Rise" ? "text-emerald-400" : h === "Fall" ? "text-orange-400" : "text-slate-400"}`}>
+                          {h}
+                        </th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -451,7 +456,7 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
               {[
                 ["Max RL", Math.max(...chartData.map(d => d.rl ?? -Infinity)).toFixed(3) + " m", "blue"],
                 ["Min RL", Math.min(...chartData.map(d => d.rl ?? Infinity)).toFixed(3) + " m", "blue"],
-                ["Gradient", chartData.length > 1 ? (((chartData[chartData.length-1].rl - chartData[0].rl) / Math.max(1, chartData.length - 1)) * 100).toFixed(2) + "%" : "—", "yellow"],
+                ["Gradient", chartData.length > 1 ? (((chartData[chartData.length - 1].rl - chartData[0].rl) / Math.max(1, chartData.length - 1)) * 100).toFixed(2) + "%" : "—", "yellow"],
               ].map(([l, v, c]) => (
                 <div key={l} className={`bg-slate-900 border border-slate-800 rounded-xl p-2`}>
                   <div className="text-slate-500">{l}</div>
@@ -541,6 +546,7 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
             {[
               { label: "Export CSV", icon: "📊", desc: "Spreadsheet-ready level book", fn: exportCSV, color: "green" },
               { label: "Export JSON", icon: "🗂️", desc: "Full data for re-import", fn: exportJSON, color: "blue" },
+              { label: "Export AutoCAD DXF", icon: "📐", desc: "Profile drawing — AutoCAD/Civil 3D", fn: exportDXFFile, color: "yellow" },
             ].map(e => (
               <button key={e.label} onClick={e.fn}
                 className={`w-full flex items-center gap-3 p-3 bg-slate-900 hover:bg-${e.color}-900/30 border border-slate-700 hover:border-${e.color}-600 rounded-xl transition-all text-left`}>
@@ -799,7 +805,24 @@ function SettingsModule({ beginner, setBeginner }) {
     </div>
   );
 }
-
+function ComingSoonModule({ type }) {
+  return (
+    <div className="flex flex-col h-full bg-slate-950 items-center justify-center p-6 gap-4">
+      <div className="text-5xl">{type?.icon}</div>
+      <div className="text-white font-bold text-xl text-center">{type?.label}</div>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 text-center max-w-xs">
+        <div className="text-yellow-400 text-sm font-semibold mb-2">🚧 Coming Soon</div>
+        <div className="text-slate-400 text-xs leading-relaxed">
+          This module is under development. Currently supported survey types are{" "}
+          <span className="text-blue-400">Simple</span>,{" "}
+          <span className="text-blue-400">Differential</span>, and{" "}
+          <span className="text-blue-400">Profile Leveling</span>.
+        </div>
+      </div>
+      <div className="text-slate-600 text-xs">v2.0 — Smart Survey AI Pro X</div>
+    </div>
+  );
+}
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("wizard"); // wizard | survey | toolkit | projects | settings
@@ -854,7 +877,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden" style={{ fontFamily: "'Share Tech Mono', 'Courier New', monospace", maxWidth: 480 , margin: "0 auto", boxShadow: "0 0 60px rgba(0,0,0,0.8)" }}>
+    <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden" style={{ fontFamily: "'Share Tech Mono', 'Courier New', monospace", maxWidth: 480, margin: "0 auto", boxShadow: "0 0 60px rgba(0,0,0,0.8)" }}>
       {/* Status Bar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800/50">
         <span className="text-blue-400 font-black text-xs tracking-widest" style={{ fontFamily: "'Orbitron', monospace" }}>SURVEY AI</span>
@@ -871,7 +894,14 @@ export default function App() {
       <div className="flex-1 overflow-hidden">
         {screen === "wizard" && <WizardScreen onSelect={handleWizardSelect} />}
         {screen === "survey" && currentProject && (
-          <LevelingModule surveyType={surveyType} beginner={beginner} project={currentProject} onProjectChange={handleProjectChange} />
+          <>
+            {(surveyType?.id === "simple" || surveyType?.id === "differential" || surveyType?.id === "profile") && (
+              <LevelingModule surveyType={surveyType} beginner={beginner} project={currentProject} onProjectChange={handleProjectChange} />
+            )}
+            {surveyType?.id === "crosssection" && <ComingSoonModule type={surveyType} />}
+            {surveyType?.id === "traverse" && <ComingSoonModule type={surveyType} />}
+            {surveyType?.id === "area" && <ComingSoonModule type={surveyType} />}
+          </>
         )}
         {screen === "survey" && !currentProject && <WizardScreen onSelect={handleWizardSelect} />}
         {screen === "toolkit" && <ToolkitModule />}
