@@ -988,10 +988,7 @@ function ProjectsModule({ projects, onNew, onLoad, onDelete, onExportAll, onImpo
   );
 }
 
-function SettingsModule({ beginner, setBeginner }) {
-  const [darkMode, setDarkMode] = useState(true);
-  const [autoSave, setAutoSave] = useState(true);
-
+function SettingsModule({ beginner, setBeginner, darkMode, setDarkMode, autoSave, setAutoSave }) {
   return (
     <div className="flex flex-col h-full bg-slate-950">
       <div className="px-3 py-2 bg-slate-900 border-b border-slate-800">
@@ -1022,12 +1019,12 @@ function SettingsModule({ beginner, setBeginner }) {
             <div className="flex justify-between"><span className="text-slate-500">Version</span><span className="text-blue-400">2.0.0</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Engine</span><span className="text-white">Survey Intelligence v2</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Standard</span><span className="text-white">12√K mm closure</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Storage</span><span className="text-green-400">Offline (IndexedDB)</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Storage</span><span className="text-green-400">Offline (localStorage)</span></div>
           </div>
         </div>
 
         <div className="bg-blue-900/20 border border-blue-800 rounded-xl p-3 text-xs text-blue-300">
-          <strong>Deploy as PWA:</strong> For full offline support and installability, deploy this app using Vite + vite-plugin-pwa to Vercel or Netlify. The complete source code with all configs is available in the exported package.
+          <strong>Deploy as PWA:</strong> For full offline support and installability, deploy this app using Vite + vite-plugin-pwa to Vercel or Netlify.
         </div>
       </div>
     </div>
@@ -1476,7 +1473,8 @@ export default function App() {
   const [projects, setProjects] = useState(() => DB.load("projects") || []);
   const [currentProject, setCurrentProject] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
-
+  const [darkMode, setDarkMode] = useState(() => DB.load("darkMode") ?? true);
+  const [autoSave, setAutoSave] = useState(() => DB.load("autoSave") ?? true);
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
@@ -1484,9 +1482,20 @@ export default function App() {
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
+  useEffect(() => { if (autoSave) DB.save("projects", projects); }, [projects, autoSave]);
+  // Dark mode effect
+  useEffect(() => {
+    document.documentElement.classList.toggle("light-mode", !darkMode);
+    DB.save("darkMode", darkMode);
+  }, [darkMode]);
 
-  useEffect(() => { DB.save("projects", projects); }, [projects]);
-
+  // Auto save effect — when disabled, clear saved projects
+  useEffect(() => {
+    DB.save("autoSave", autoSave);
+    if (autoSave) {
+      DB.save("projects", projects);
+    }
+  }, [autoSave]);
   const handleWizardSelect = (type) => {
     setSurveyType(type);
     const proj = { id: uid(), name: `${type.label} — ${new Date().toLocaleDateString()}`, type: type.id, rows: [], bm: "100.000", updated: Date.now() };
@@ -1603,7 +1612,13 @@ export default function App() {
             currentProject={currentProject}
           />
         )}
-        {screen === "settings" && <SettingsModule beginner={beginner} setBeginner={setBeginner} />}
+        {screen === "settings" && (
+          <SettingsModule
+            beginner={beginner} setBeginner={setBeginner}
+            darkMode={darkMode} setDarkMode={setDarkMode}
+            autoSave={autoSave} setAutoSave={setAutoSave}
+          />
+        )}
       </div>
 
       {/* Bottom Navigation */}
