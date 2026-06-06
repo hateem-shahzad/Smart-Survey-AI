@@ -197,6 +197,10 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
   const [activeTab, setActiveTab] = useState("input");
   const [history, setHistory] = useState([]);
   const [histIdx, setHistIdx] = useState(-1);
+  const [designMode, setDesignMode] = useState("flat"); // "flat" | "slope"
+  const [designRL, setDesignRL] = useState("");          // flat mode
+  const [designStart, setDesignStart] = useState("");    // slope mode start RL
+  const [designEnd, setDesignEnd] = useState("");        // slope mode end RL
 
   const pushHistory = useCallback((newRows) => {
     setHistory(h => [...h.slice(0, histIdx + 1), newRows].slice(-30));
@@ -251,6 +255,83 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
       closureError: computed.closureError,
       totalDist,
     });
+  };
+  const exportPDF = () => {
+    const win = window.open("", "_blank");
+    const now = new Date().toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "2-digit" });
+
+    const rowsHTML = computed.rows.map((r, i) => `
+    <tr>
+      <td>${r.station || `P${i + 1}`}</td>
+      <td class="bs">${r.bs || "—"}</td>
+      <td class="is">${r.is || "—"}</td>
+      <td class="fs">${r.fs || "—"}</td>
+      <td>${fmt(r._hi)}</td>
+      <td class="rl">${fmt(r._rl)}</td>
+      ${method === "rf" ? `<td class="rise">${r.rise ? fmt(r.rise) : "—"}</td><td class="fall">${r.fall ? fmt(r.fall) : "—"}</td>` : ""}
+      <td>${r.chainage || "—"}</td>
+      <td>${r.distance || "—"}</td>
+      <td>${r.remarks || ""}</td>
+    </tr>`).join("");
+
+    win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Level Book — ${project?.name || "Survey"}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 11px; color: #000; padding: 20px; }
+    h1 { font-size: 16px; text-align: center; margin-bottom: 2px; }
+    .subtitle { text-align: center; font-size: 11px; color: #444; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    th, td { border: 1px solid #333; padding: 4px 6px; text-align: center; }
+    th { background: #222; color: #fff; font-weight: bold; }
+    tr:nth-child(even) { background: #f5f5f5; }
+    .bs   { color: #166534; font-weight: bold; }
+    .is   { color: #854d0e; font-weight: bold; }
+    .fs   { color: #991b1b; font-weight: bold; }
+    .rl   { color: #1e3a5f; font-weight: bold; }
+    .rise { color: #14532d; }
+    .fall { color: #7f1d1d; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .card { border: 1px solid #333; padding: 8px; border-radius: 4px; }
+    .card-label { font-size: 9px; color: #555; text-transform: uppercase; }
+    .card-value { font-size: 13px; font-weight: bold; margin-top: 2px; }
+    .pass { color: #166534; } .fail { color: #991b1b; }
+    .footer { text-align: center; font-size: 9px; color: #777; margin-top: 10px; border-top: 1px solid #ccc; padding-top: 6px; }
+    @media print { body { padding: 10px; } }
+  </style>
+</head>
+<body>
+  <h1>FIELD LEVEL BOOK</h1>
+  <div class="subtitle">${project?.name || surveyType?.label || "Survey"} &nbsp;|&nbsp; ${now} &nbsp;|&nbsp; Method: ${method === "hi" ? "Height of Instrument" : "Rise & Fall"} &nbsp;|&nbsp; BM: ${bm} m</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Station</th><th>BS</th><th>IS</th><th>FS</th><th>HI</th><th>RL</th>
+        ${method === "rf" ? "<th>Rise</th><th>Fall</th>" : ""}
+        <th>Chainage</th><th>Dist</th><th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHTML}</tbody>
+  </table>
+
+  <div class="summary">
+    <div class="card"><div class="card-label">ΣBS</div><div class="card-value">${fmt(computed.sumBS)}</div></div>
+    <div class="card"><div class="card-label">ΣFS</div><div class="card-value">${fmt(computed.sumFS)}</div></div>
+    <div class="card"><div class="card-label">ΣBS − ΣFS</div><div class="card-value">${fmt(computed.sumBS - computed.sumFS)}</div></div>
+    <div class="card"><div class="card-label">Closure Error</div><div class="card-value ${closurePASS ? "pass" : "fail"}">${actualErr.toFixed(1)} mm</div></div>
+    <div class="card"><div class="card-label">Allowable (12√K)</div><div class="card-value">${allowableErr.toFixed(1)} mm</div></div>
+    <div class="card"><div class="card-label">Status</div><div class="card-value ${closurePASS ? "pass" : "fail"}">${closurePASS ? "✓ PASS" : "✗ FAIL"}</div></div>
+  </div>
+
+  <div class="footer">Smart Survey AI Pro X &nbsp;|&nbsp; Generated: ${now} &nbsp;|&nbsp; Total Stations: ${computed.rows.length} &nbsp;|&nbsp; Turning Points: ${computed.tpCount}</div>
+
+  <script>window.onload = () => { window.print(); }</script>
+</body>
+</html>`);
+    win.document.close();
   };
   const TABS = ["input", "results", "profile", "analysis", "export"];
 
@@ -427,43 +508,170 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
         )}
 
         {/* PROFILE TAB */}
+        {/* PROFILE TAB */}
         {activeTab === "profile" && (
-          <div className="p-3">
-            <div className="text-slate-300 text-sm font-semibold mb-2">Longitudinal Profile (L-Section)</div>
+          <div className="p-3 space-y-3">
+            <div className="text-slate-300 text-sm font-semibold">Longitudinal Profile (L-Section)</div>
+
+            {/* Design RL controls */}
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 space-y-2">
+              <div className="text-slate-400 text-xs font-semibold">📐 Design RL</div>
+              <div className="flex gap-2">
+                <button onClick={() => setDesignMode("flat")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-mono border transition-colors ${designMode === "flat" ? "bg-blue-900/40 border-blue-600 text-blue-300" : "bg-slate-800 border-slate-600 text-slate-400"}`}>
+                  Flat / Horizontal
+                </button>
+                <button onClick={() => setDesignMode("slope")}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-mono border transition-colors ${designMode === "slope" ? "bg-blue-900/40 border-blue-600 text-blue-300" : "bg-slate-800 border-slate-600 text-slate-400"}`}>
+                  Sloped (2 points)
+                </button>
+              </div>
+
+              {designMode === "flat" && (
+                <div className="flex items-center gap-2">
+                  <label className="text-slate-500 text-xs whitespace-nowrap">Design RL (m)</label>
+                  <input value={designRL} onChange={e => setDesignRL(e.target.value)}
+                    placeholder="e.g. 100.500"
+                    className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-orange-300 font-mono text-xs focus:outline-none focus:border-orange-500" />
+                  {designRL && <button onClick={() => setDesignRL("")} className="text-slate-500 hover:text-red-400 text-xs">✕</button>}
+                </div>
+              )}
+
+              {designMode === "slope" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-slate-500 text-xs block mb-1">Start RL (m)</label>
+                    <input value={designStart} onChange={e => setDesignStart(e.target.value)}
+                      placeholder="e.g. 100.200"
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-orange-300 font-mono text-xs focus:outline-none focus:border-orange-500" />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-xs block mb-1">End RL (m)</label>
+                    <input value={designEnd} onChange={e => setDesignEnd(e.target.value)}
+                      placeholder="e.g. 101.000"
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-orange-300 font-mono text-xs focus:outline-none focus:border-orange-500" />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {chartData.length < 2 ? (
               <div className="text-slate-500 text-center py-8 text-sm">Add at least 2 rows with RL values to see profile.</div>
-            ) : (
-              <div className="bg-slate-900 border border-slate-700 rounded-xl p-2">
-                <ResponsiveContainer width="100%" height={240}>
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
-                    <defs>
-                      <linearGradient id="rlGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 10 }} label={{ value: "Station", position: "insideBottom", offset: -10, fill: "#64748b", fontSize: 10 }} />
-                    <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} label={{ value: "RL (m)", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 10 }} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }} labelStyle={{ color: "#94a3b8" }} itemStyle={{ color: "#60a5fa" }} formatter={v => [fmt(v, 3) + " m", "RL"]} />
-                    <ReferenceLine y={num(bm) ?? 100} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "BM", fill: "#f59e0b", fontSize: 10 }} />
-                    <Area type="monotone" dataKey="rl" stroke="#3b82f6" strokeWidth={2} fill="url(#rlGrad)" dot={{ fill: "#3b82f6", r: 4 }} activeDot={{ r: 6, fill: "#60a5fa" }} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-              {[
-                ["Max RL", Math.max(...chartData.map(d => d.rl ?? -Infinity)).toFixed(3) + " m", "blue"],
-                ["Min RL", Math.min(...chartData.map(d => d.rl ?? Infinity)).toFixed(3) + " m", "blue"],
-                ["Gradient", chartData.length > 1 ? (((chartData[chartData.length - 1].rl - chartData[0].rl) / Math.max(1, chartData.length - 1)) * 100).toFixed(2) + "%" : "—", "yellow"],
-              ].map(([l, v, c]) => (
-                <div key={l} className={`bg-slate-900 border border-slate-800 rounded-xl p-2`}>
-                  <div className="text-slate-500">{l}</div>
-                  <div className={`font-mono font-bold text-${c}-400 text-sm`}>{v}</div>
+            ) : (() => {
+              // Build design line data
+              const dStart = num(designStart), dEnd = num(designEnd), dFlat = num(designRL);
+              const hasDesign = designMode === "flat" ? dFlat != null : (dStart != null && dEnd != null);
+
+              const chartWithDesign = chartData.map((d, i) => {
+                let design = null;
+                if (hasDesign) {
+                  if (designMode === "flat") {
+                    design = dFlat;
+                  } else {
+                    design = dStart + (dEnd - dStart) * (i / Math.max(chartData.length - 1, 1));
+                  }
+                }
+                return { ...d, design };
+              });
+
+              // Cut/fill summary
+              const cutFill = hasDesign ? chartWithDesign.map(d => ({
+                name: d.name,
+                cutFill: d.rl != null && d.design != null ? d.rl - d.design : null,
+              })) : [];
+
+              return (
+                <div className="space-y-3">
+                  <div className="bg-slate-900 border border-slate-700 rounded-xl p-2">
+                    <ResponsiveContainer width="100%" height={240}>
+                      <AreaChart data={chartWithDesign} margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
+                        <defs>
+                          <linearGradient id="rlGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 10 }}
+                          label={{ value: "Station", position: "insideBottom", offset: -10, fill: "#64748b", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }}
+                          label={{ value: "RL (m)", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 10 }} />
+                        <Tooltip
+                          contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                          labelStyle={{ color: "#94a3b8" }}
+                          formatter={(v, name) => [
+                            v != null ? Number(v).toFixed(3) + " m" : "—",
+                            name === "rl" ? "Ground RL" : name === "design" ? "Design RL" : name
+                          ]} />
+                        <ReferenceLine y={num(bm) ?? 100} stroke="#f59e0b" strokeDasharray="4 4"
+                          label={{ value: "BM", fill: "#f59e0b", fontSize: 10 }} />
+                        <Area type="monotone" dataKey="rl" stroke="#3b82f6" strokeWidth={2}
+                          fill="url(#rlGrad)" dot={{ fill: "#3b82f6", r: 4 }} activeDot={{ r: 6, fill: "#60a5fa" }}
+                          name="rl" />
+                        {hasDesign && (
+                          <Line type="monotone" dataKey="design" stroke="#f97316" strokeWidth={2}
+                            strokeDasharray="6 3" dot={false} name="design" />
+                        )}
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Legend */}
+                  {hasDesign && (
+                    <div className="flex gap-4 text-xs font-mono px-1">
+                      <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-blue-500 inline-block"></span> Ground RL</span>
+                      <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed border-orange-400 inline-block"></span> Design RL</span>
+                    </div>
+                  )}
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    {[
+                      ["Max RL", Math.max(...chartData.map(d => d.rl ?? -Infinity)).toFixed(3) + " m", "blue"],
+                      ["Min RL", Math.min(...chartData.map(d => d.rl ?? Infinity)).toFixed(3) + " m", "blue"],
+                      ["Gradient", chartData.length > 1 ? (((chartData[chartData.length - 1].rl - chartData[0].rl) / Math.max(1, chartData.length - 1)) * 100).toFixed(2) + "%" : "—", "yellow"],
+                    ].map(([l, v, c]) => (
+                      <div key={l} className={`bg-slate-900 border border-slate-800 rounded-xl p-2`}>
+                        <div className="text-slate-500">{l}</div>
+                        <div className={`font-mono font-bold text-${c}-400 text-sm`}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Cut / Fill table */}
+                  {hasDesign && cutFill.length > 0 && (
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3">
+                      <div className="text-slate-400 text-xs font-semibold mb-2">⛏️ Cut / Fill Analysis</div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs min-w-max">
+                          <thead><tr className="text-slate-500 border-b border-slate-700">
+                            <th className="text-left px-2 py-1 font-mono">Station</th>
+                            <th className="text-left px-2 py-1 font-mono">Ground RL</th>
+                            <th className="text-left px-2 py-1 font-mono">Design RL</th>
+                            <th className="text-left px-2 py-1 font-mono">Cut (+)</th>
+                            <th className="text-left px-2 py-1 font-mono">Fill (−)</th>
+                          </tr></thead>
+                          <tbody>
+                            {chartWithDesign.map((d, i) => {
+                              const diff = d.rl != null && d.design != null ? d.rl - d.design : null;
+                              return (
+                                <tr key={i} className="border-t border-slate-800">
+                                  <td className="px-2 py-1 text-white font-mono">{d.name}</td>
+                                  <td className="px-2 py-1 text-blue-400 font-mono">{d.rl?.toFixed(3) ?? "—"}</td>
+                                  <td className="px-2 py-1 text-orange-400 font-mono">{d.design?.toFixed(3) ?? "—"}</td>
+                                  <td className="px-2 py-1 text-red-400 font-mono">{diff != null && diff > 0 ? diff.toFixed(3) : "—"}</td>
+                                  <td className="px-2 py-1 text-green-400 font-mono">{diff != null && diff < 0 ? Math.abs(diff).toFixed(3) : "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
         )}
 
@@ -547,6 +755,7 @@ function LevelingModule({ surveyType, beginner, project, onProjectChange }) {
               { label: "Export CSV", icon: "📊", desc: "Spreadsheet-ready level book", fn: exportCSV, color: "green" },
               { label: "Export JSON", icon: "🗂️", desc: "Full data for re-import", fn: exportJSON, color: "blue" },
               { label: "Export AutoCAD DXF", icon: "📐", desc: "Profile drawing — AutoCAD/Civil 3D", fn: exportDXFFile, color: "yellow" },
+              { label: "Export PDF", icon: "📄", desc: "Printable field level book", fn: exportPDF, color: "purple" },
             ].map(e => (
               <button key={e.label} onClick={e.fn}
                 className={`w-full flex items-center gap-3 p-3 bg-slate-900 hover:bg-${e.color}-900/30 border border-slate-700 hover:border-${e.color}-600 rounded-xl transition-all text-left`}>
@@ -728,7 +937,7 @@ function ToolkitModule() {
   );
 }
 
-function ProjectsModule({ projects, onNew, onLoad, onDelete }) {
+function ProjectsModule({ projects, onNew, onLoad, onDelete, onExportAll, onImport, onExportCurrent, currentProject }) {
   return (
     <div className="flex flex-col h-full bg-slate-950">
       <div className="px-3 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
@@ -738,6 +947,25 @@ function ProjectsModule({ projects, onNew, onLoad, onDelete }) {
         </div>
         <button onClick={onNew} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-xs font-semibold">+ New</button>
       </div>
+
+      {/* Backup / Restore bar */}
+      <div className="flex gap-2 px-3 py-2 bg-slate-900/50 border-b border-slate-800">
+        <button onClick={onExportAll}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-slate-800 hover:bg-blue-900/40 border border-slate-700 hover:border-blue-600 rounded-xl text-xs text-slate-300 hover:text-blue-300 transition-all">
+          ⬇ Backup All
+        </button>
+        <label className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-slate-800 hover:bg-green-900/40 border border-slate-700 hover:border-green-600 rounded-xl text-xs text-slate-300 hover:text-green-300 transition-all cursor-pointer">
+          ⬆ Restore
+          <input type="file" accept=".json" onChange={onImport} className="hidden" />
+        </label>
+        {currentProject && (
+          <button onClick={onExportCurrent}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-slate-800 hover:bg-yellow-900/40 border border-slate-700 hover:border-yellow-600 rounded-xl text-xs text-slate-300 hover:text-yellow-300 transition-all">
+            📤 Export Current
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {projects.length === 0 ? (
           <div className="text-center py-12 text-slate-600">
@@ -749,7 +977,7 @@ function ProjectsModule({ projects, onNew, onLoad, onDelete }) {
           <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center gap-3">
             <div className="flex-1">
               <div className="text-white font-semibold text-sm">{p.name}</div>
-              <div className="text-slate-500 text-xs">{p.type} • {p.rows?.length || 0} stations • {new Date(p.updated).toLocaleDateString()}</div>
+              <div className="text-slate-500 text-xs">{p.type} • {p.rows?.length || p.legs?.length || 0} stations • {new Date(p.updated).toLocaleDateString()}</div>
             </div>
             <button onClick={() => onLoad(p)} className="px-2 py-1 text-blue-400 bg-blue-900/30 border border-blue-700 rounded-lg text-xs">Open</button>
             <button onClick={() => onDelete(p.id)} className="px-2 py-1 text-red-400 bg-red-900/30 border border-red-700 rounded-lg text-xs">Del</button>
@@ -815,7 +1043,9 @@ function ComingSoonModule({ type }) {
         <div className="text-slate-400 text-xs leading-relaxed">
           This module is under development. Currently supported survey types are{" "}
           <span className="text-blue-400">Simple</span>,{" "}
-          <span className="text-blue-400">Differential</span>, and{" "}
+          <span className="text-blue-400">Differential</span>,
+          <span className="text-blue-400">Traverse Survey</span>,
+          and {" "}
           <span className="text-blue-400">Profile Leveling</span>.
         </div>
       </div>
@@ -823,6 +1053,420 @@ function ComingSoonModule({ type }) {
     </div>
   );
 }
+// ─── TRAVERSE SURVEY MODULE ───────────────────────────────────────────────────
+// Bowditch (Compass Rule) adjustment
+// Add this entire block to App.jsx before the App() function
+
+const uid2 = () => Math.random().toString(36).slice(2, 9);
+const num2 = (v) => isFinite(parseFloat(v)) ? parseFloat(v) : null;
+const fmt2 = (v, d = 3) => v != null && isFinite(v) ? Number(v).toFixed(d) : "—";
+
+const EMPTY_LEG = () => ({
+  _id: uid2(),
+  station: "",
+  bearing: "",   // DD.MMSS format e.g. 45.3020 = 45°30'20"
+  distance: "",
+  remarks: "",
+});
+
+// Convert DD.MMSS → decimal degrees
+function dmsToDecimal(dms) {
+  const d = num2(dms);
+  if (d == null) return null;
+  const deg = Math.floor(Math.abs(d));
+  const min = Math.floor((Math.abs(d) - deg) * 100);
+  const sec = Math.round((((Math.abs(d) - deg) * 100) - min) * 100);
+  return (deg + min / 60 + sec / 3600) * (d < 0 ? -1 : 1);
+}
+
+// Decimal degrees → DMS string
+function decimalToDMS(dd) {
+  if (dd == null || !isFinite(dd)) return "—";
+  const d = Math.floor(Math.abs(dd));
+  const mFull = (Math.abs(dd) - d) * 60;
+  const m = Math.floor(mFull);
+  const s = Math.round((mFull - m) * 60);
+  return `${d}° ${String(m).padStart(2, "0")}' ${String(s).padStart(2, "0")}"`;
+}
+
+function computeTraverse(legs) {
+  const results = [];
+  let sumLat = 0, sumDep = 0, sumDist = 0;
+  let x = 0, y = 0;
+  const coords = [{ x: 0, y: 0, station: legs[0]?.station || "P1" }];
+
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const bearingDD = dmsToDecimal(leg.bearing);
+    const dist = num2(leg.distance);
+
+    if (bearingDD == null || dist == null) {
+      results.push({ ...leg, lat: null, dep: null, adjLat: null, adjDep: null, x: null, y: null });
+      continue;
+    }
+
+    const bearingRad = (bearingDD * Math.PI) / 180;
+    const lat = dist * Math.cos(bearingRad);
+    const dep = dist * Math.sin(bearingRad);
+
+    sumLat += lat;
+    sumDep += dep;
+    sumDist += dist;
+
+    x += dep;
+    y += lat;
+
+    const nextStation = legs[i + 1]?.station || `P${i + 2}`;
+    coords.push({ x, y, station: nextStation });
+    results.push({ ...leg, bearingDD, dist, lat, dep, x, y });
+  }
+
+  // Closure error
+  const closureError = Math.sqrt(sumLat ** 2 + sumDep ** 2);
+  const precision = sumDist > 0 ? sumDist / (closureError || 0.0001) : 0;
+
+  // Bowditch correction
+  const corrected = results.map(r => {
+    if (r.lat == null) return r;
+    const adjLat = r.lat - (r.dist / sumDist) * sumLat;
+    const adjDep = r.dep - (r.dist / sumDist) * sumDep;
+    return { ...r, adjLat, adjDep, corrLat: -(r.dist / sumDist) * sumLat, corrDep: -(r.dist / sumDist) * sumDep };
+  });
+
+  // Adjusted coordinates
+  let ax = 0, ay = 0;
+  const adjCoords = [{ x: 0, y: 0, station: legs[0]?.station || "P1" }];
+  corrected.forEach((r, i) => {
+    if (r.adjLat != null) {
+      ay += r.adjLat;
+      ax += r.adjDep;
+    }
+    adjCoords.push({ x: ax, y: ay, station: legs[i + 1]?.station || `P${i + 2}` });
+  });
+
+  return {
+    rows: corrected,
+    sumLat, sumDep, sumDist,
+    closureError, precision,
+    coords, adjCoords,
+  };
+}
+
+function TraverseMap({ coords, adjCoords, width = 280, height = 220 }) {
+  const allX = adjCoords.map(c => c.x);
+  const allY = adjCoords.map(c => c.y);
+  const minX = Math.min(...allX), maxX = Math.max(...allX);
+  const minY = Math.min(...allY), maxY = Math.max(...allY);
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
+  const PAD = 30;
+  const scaleX = (width - PAD * 2) / rangeX;
+  const scaleY = (height - PAD * 2) / rangeY;
+  const scale = Math.min(scaleX, scaleY);
+
+  const toSvgX = x => PAD + (x - minX) * scale;
+  const toSvgY = y => height - PAD - (y - minY) * scale;
+
+  const pathD = adjCoords.map((c, i) =>
+    `${i === 0 ? "M" : "L"} ${toSvgX(c.x).toFixed(1)} ${toSvgY(c.y).toFixed(1)}`
+  ).join(" ") + " Z";
+
+  // Unadjusted (ghost) path
+  const ghostD = coords.map((c, i) =>
+    `${i === 0 ? "M" : "L"} ${toSvgX(c.x).toFixed(1)} ${toSvgY(c.y).toFixed(1)}`
+  ).join(" ") + " Z";
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}
+      className="bg-slate-900 rounded-xl border border-slate-700">
+      {/* Ghost unadjusted traverse */}
+      <path d={ghostD} fill="none" stroke="#475569" strokeWidth="1" strokeDasharray="4 3" />
+      {/* Adjusted traverse */}
+      <path d={pathD} fill="rgba(59,130,246,0.08)" stroke="#3b82f6" strokeWidth="2" />
+      {/* Station dots + labels */}
+      {adjCoords.map((c, i) => (
+        <g key={i}>
+          <circle cx={toSvgX(c.x)} cy={toSvgY(c.y)} r="4" fill={i === 0 ? "#f59e0b" : "#3b82f6"} />
+          <text x={toSvgX(c.x) + 5} y={toSvgY(c.y) - 5}
+            fontSize="9" fill="#94a3b8" fontFamily="monospace">
+            {c.station}
+          </text>
+        </g>
+      ))}
+      {/* Legend */}
+      <line x1="8" y1={height - 14} x2="22" y2={height - 14} stroke="#3b82f6" strokeWidth="2" />
+      <text x="25" y={height - 10} fontSize="8" fill="#64748b" fontFamily="monospace">Adjusted</text>
+      <line x1="80" y1={height - 14} x2="94" y2={height - 14} stroke="#475569" strokeWidth="1" strokeDasharray="4 3" />
+      <text x="97" y={height - 10} fontSize="8" fill="#64748b" fontFamily="monospace">Original</text>
+    </svg>
+  );
+}
+
+export function TraverseModule({ surveyType, beginner, project, onProjectChange }) {
+  const [legs, setLegs] = useState(project?.legs || [EMPTY_LEG(), EMPTY_LEG(), EMPTY_LEG()]);
+  const [activeTab, setActiveTab] = useState("input");
+
+  const updateLegs = (newLegs) => {
+    setLegs(newLegs);
+    onProjectChange?.({ legs: newLegs });
+  };
+
+  const updateCell = (idx, key, val) => {
+    updateLegs(legs.map((r, i) => i === idx ? { ...r, [key]: val } : r));
+  };
+
+  const addLeg = () => updateLegs([...legs, EMPTY_LEG()]);
+  const delLeg = (idx) => { if (legs.length > 2) updateLegs(legs.filter((_, i) => i !== idx)); };
+
+  const computed = useMemo(() => computeTraverse(legs), [legs]);
+
+  const precisionStr = computed.precision > 0
+    ? `1 : ${Math.round(computed.precision).toLocaleString()}`
+    : "—";
+
+  const closureOK = computed.precision >= 3000; // 1:3000 typical minimum
+
+  const exportCSV = () => {
+    const header = "Station,Bearing(DMS),Distance,Latitude,Departure,Corr.Lat,Corr.Dep,Adj.Lat,Adj.Dep,Easting,Northing\n";
+    const body = computed.rows.map((r, i) =>
+      `${r.station || `P${i + 1}`},${decimalToDMS(r.bearingDD)},${fmt2(r.dist)},${fmt2(r.lat)},${fmt2(r.dep)},${fmt2(r.corrLat, 4)},${fmt2(r.corrDep, 4)},${fmt2(r.adjLat)},${fmt2(r.adjDep)},${fmt2(r.x)},${fmt2(r.y)}`
+    ).join("\n");
+    const blob = new Blob([header + body], { type: "text/csv" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "traverse_survey.csv"; a.click();
+  };
+
+  const TABS = ["input", "results", "map", "export"];
+
+  return (
+    <div className="flex flex-col h-full bg-slate-950">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-slate-900 border-b border-slate-800">
+        <span className="text-blue-400 text-lg">🔺</span>
+        <div>
+          <div className="text-white font-bold text-sm">Traverse Survey</div>
+          <div className="text-slate-500 text-xs font-mono">Bowditch (Compass Rule) Adjustment</div>
+        </div>
+        <div className="ml-auto">
+          <span className={`text-xs font-mono px-2 py-1 rounded-lg border ${closureOK ? "text-green-400 border-green-700 bg-green-900/20" : "text-red-400 border-red-700 bg-red-900/20"}`}>
+            {precisionStr}
+          </span>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-slate-800 bg-slate-900/30">
+        {TABS.map(t => (
+          <button key={t} onClick={() => setActiveTab(t)}
+            className={`flex-1 px-2 py-2 text-xs font-mono capitalize transition-colors ${activeTab === t ? "text-blue-400 border-b-2 border-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+            {t === "input" ? "📋 Input" : t === "results" ? "📊 Results" : t === "map" ? "🗺️ Map" : "💾 Export"}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+
+        {/* INPUT TAB */}
+        {activeTab === "input" && (
+          <div className="p-2">
+            {beginner && (
+              <div className="mb-2 p-2 bg-blue-900/20 border border-blue-800 rounded-xl text-xs text-blue-300">
+                💡 Enter each leg of the traverse. <strong>Bearing</strong> in DD.MMSS format (e.g. <code>45.3020</code> = 45°30'20"). <strong>Distance</strong> in metres.
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse min-w-max">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-800">
+                    {["From", "Bearing (DD.MMSS)", "Distance (m)", "Remarks", ""].map((h, i) => (
+                      <th key={i} className="px-1.5 py-1.5 text-left font-mono">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {legs.map((r, idx) => (
+                    <tr key={r._id} className={`border-b border-slate-800/50 ${idx % 2 === 0 ? "bg-slate-900/20" : ""}`}>
+                      <td className="px-1">
+                        <input value={r.station} onChange={e => updateCell(idx, "station", e.target.value)}
+                          placeholder={`P${idx + 1}`}
+                          className="w-16 bg-transparent border-b border-slate-700 focus:border-blue-500 outline-none py-1.5 px-0.5 font-mono text-xs text-white" />
+                      </td>
+                      <td className="px-1">
+                        <input value={r.bearing} onChange={e => updateCell(idx, "bearing", e.target.value)}
+                          placeholder="45.3020"
+                          className="w-24 bg-transparent border-b border-slate-700 focus:border-blue-500 outline-none py-1.5 px-0.5 font-mono text-xs text-yellow-400" />
+                      </td>
+                      <td className="px-1">
+                        <input value={r.distance} onChange={e => updateCell(idx, "distance", e.target.value)}
+                          placeholder="0.000"
+                          className="w-20 bg-transparent border-b border-slate-700 focus:border-blue-500 outline-none py-1.5 px-0.5 font-mono text-xs text-green-400" />
+                      </td>
+                      <td className="px-1">
+                        <input value={r.remarks} onChange={e => updateCell(idx, "remarks", e.target.value)}
+                          placeholder="note"
+                          className="w-20 bg-transparent border-b border-slate-700 focus:border-blue-500 outline-none py-1.5 px-0.5 font-mono text-xs text-slate-400" />
+                      </td>
+                      <td className="px-1">
+                        <button onClick={() => delLeg(idx)} className="p-1 text-slate-600 hover:text-red-400">✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={addLeg}
+              className="mt-3 w-full py-2.5 bg-blue-900/30 hover:bg-blue-800/50 border border-blue-700 rounded-xl text-blue-300 text-sm font-semibold transition-colors">
+              + Add Leg
+            </button>
+          </div>
+        )}
+
+        {/* RESULTS TAB */}
+        {activeTab === "results" && (
+          <div className="p-3 space-y-3">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ["Total Distance", fmt2(computed.sumDist) + " m", "blue"],
+                ["Closure Error", fmt2(computed.closureError * 1000, 1) + " mm", closureOK ? "green" : "red"],
+                ["Precision", precisionStr, closureOK ? "green" : "red"],
+                ["Legs", computed.rows.length, "slate"],
+              ].map(([label, val, c]) => (
+                <div key={label} className={`bg-slate-900 border border-${c}-800/50 rounded-xl p-2.5`}>
+                  <div className="text-slate-500 text-xs">{label}</div>
+                  <div className={`font-mono font-bold text-${c}-400`}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Main table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-xs min-w-max">
+                <thead className="bg-slate-800/80">
+                  <tr>
+                    {["Stn", "Bearing", "Dist", "Lat", "Dep", "Corr.L", "Corr.D", "Adj.Lat", "Adj.Dep", "E", "N"].map(h => (
+                      <th key={h} className="px-2 py-2 text-left font-mono text-slate-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {computed.rows.map((r, i) => (
+                    <tr key={r._id} className={`border-t border-slate-800 ${i % 2 === 0 ? "bg-slate-900/30" : ""}`}>
+                      <td className="px-2 py-1.5 text-white font-mono">{r.station || `P${i + 1}`}</td>
+                      <td className="px-2 py-1.5 text-yellow-400 font-mono">{decimalToDMS(r.bearingDD)}</td>
+                      <td className="px-2 py-1.5 text-green-400 font-mono">{fmt2(r.dist)}</td>
+                      <td className={`px-2 py-1.5 font-mono ${r.lat >= 0 ? "text-blue-300" : "text-orange-300"}`}>{fmt2(r.lat)}</td>
+                      <td className={`px-2 py-1.5 font-mono ${r.dep >= 0 ? "text-blue-300" : "text-orange-300"}`}>{fmt2(r.dep)}</td>
+                      <td className="px-2 py-1.5 text-slate-400 font-mono text-xs">{fmt2(r.corrLat, 4)}</td>
+                      <td className="px-2 py-1.5 text-slate-400 font-mono text-xs">{fmt2(r.corrDep, 4)}</td>
+                      <td className="px-2 py-1.5 text-emerald-400 font-mono">{fmt2(r.adjLat)}</td>
+                      <td className="px-2 py-1.5 text-emerald-400 font-mono">{fmt2(r.adjDep)}</td>
+                      <td className="px-2 py-1.5 text-purple-400 font-mono">{fmt2(r.x)}</td>
+                      <td className="px-2 py-1.5 text-purple-400 font-mono">{fmt2(r.y)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-slate-800/50 border-t-2 border-slate-600">
+                  <tr>
+                    <td className="px-2 py-1.5 text-slate-400 font-mono font-bold">Σ</td>
+                    <td></td>
+                    <td className="px-2 py-1.5 text-green-400 font-mono font-bold">{fmt2(computed.sumDist)}</td>
+                    <td className="px-2 py-1.5 text-red-400 font-mono">{fmt2(computed.sumLat)}</td>
+                    <td className="px-2 py-1.5 text-red-400 font-mono">{fmt2(computed.sumDep)}</td>
+                    <td colSpan={6}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Adjusted coordinates */}
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-3">
+              <div className="text-slate-400 text-xs font-semibold mb-2">📍 Adjusted Coordinates</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-max">
+                  <thead><tr className="text-slate-500 border-b border-slate-700">
+                    <th className="text-left px-2 py-1 font-mono">Station</th>
+                    <th className="text-left px-2 py-1 font-mono">Easting (E)</th>
+                    <th className="text-left px-2 py-1 font-mono">Northing (N)</th>
+                  </tr></thead>
+                  <tbody>
+                    {computed.adjCoords.map((c, i) => (
+                      <tr key={i} className="border-t border-slate-800">
+                        <td className="px-2 py-1 text-white font-mono">{c.station}</td>
+                        <td className="px-2 py-1 text-purple-400 font-mono">{fmt2(c.x)}</td>
+                        <td className="px-2 py-1 text-purple-400 font-mono">{fmt2(c.y)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Closure status */}
+            <div className={`rounded-xl border p-3 ${closureOK ? "border-green-700 bg-green-900/20" : "border-red-700 bg-red-900/20"}`}>
+              <div className="flex justify-between items-center">
+                <span className="text-white font-bold text-sm">Closure Check</span>
+                <span className={`text-xs font-mono px-2 py-0.5 rounded-full border ${closureOK ? "text-green-400 border-green-700" : "text-red-400 border-red-700"}`}>
+                  {closureOK ? "✓ PASS (≥ 1:3000)" : "✗ FAIL (< 1:3000)"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs font-mono mt-2">
+                <div><div className="text-slate-500">ΣLat error</div><div className="text-yellow-300">{fmt2(computed.sumLat)} m</div></div>
+                <div><div className="text-slate-500">ΣDep error</div><div className="text-yellow-300">{fmt2(computed.sumDep)} m</div></div>
+                <div><div className="text-slate-500">Linear error</div><div className="text-yellow-300">{fmt2(computed.closureError)} m</div></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MAP TAB */}
+        {activeTab === "map" && (
+          <div className="p-3 space-y-3">
+            <div className="text-slate-300 text-sm font-semibold">Traverse Plot</div>
+            <div className="flex justify-center">
+              <TraverseMap coords={computed.coords} adjCoords={computed.adjCoords} width={300} height={240} />
+            </div>
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-400 space-y-1">
+              <div className="flex gap-3 items-center"><span className="w-6 h-0.5 bg-blue-500 inline-block"></span> Adjusted traverse</div>
+              <div className="flex gap-3 items-center"><span className="w-6 border-t border-dashed border-slate-500 inline-block"></span> Original (unadjusted)</div>
+              <div className="flex gap-3 items-center"><span className="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span> Start point</div>
+            </div>
+            <div className="text-slate-600 text-xs text-center">Origin = first station (0, 0). Units in metres.</div>
+          </div>
+        )}
+
+        {/* EXPORT TAB */}
+        {activeTab === "export" && (
+          <div className="p-3 space-y-2">
+            <div className="text-slate-300 text-sm font-semibold mb-3">💾 Export Traverse Data</div>
+            <button onClick={exportCSV}
+              className="w-full flex items-center gap-3 p-3 bg-slate-900 hover:bg-green-900/30 border border-slate-700 hover:border-green-600 rounded-xl transition-all text-left">
+              <span className="text-2xl">📊</span>
+              <div>
+                <div className="text-white font-semibold text-sm">Export CSV</div>
+                <div className="text-slate-500 text-xs">Full traverse table with adjusted coordinates</div>
+              </div>
+            </button>
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-3">
+              <div className="text-slate-400 text-xs font-semibold mb-2">📋 Survey Summary</div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                <div className="text-slate-500">Total Legs</div><div className="text-white">{computed.rows.length}</div>
+                <div className="text-slate-500">Total Distance</div><div className="text-blue-400">{fmt2(computed.sumDist)} m</div>
+                <div className="text-slate-500">Closure Error</div><div className="text-yellow-400">{fmt2(computed.closureError * 1000, 1)} mm</div>
+                <div className="text-slate-500">Precision</div><div className={closureOK ? "text-green-400" : "text-red-400"}>{precisionStr}</div>
+                <div className="text-slate-500">Method</div><div className="text-white">Bowditch Rule</div>
+                <div className="text-slate-500">Status</div>
+                <div className={closureOK ? "text-green-400" : "text-red-400"}>{closureOK ? "✓ PASS" : "✗ FAIL"}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("wizard"); // wizard | survey | toolkit | projects | settings
@@ -859,6 +1503,46 @@ export default function App() {
       const idx = ps.findIndex(p => p.id === updated.id);
       return idx >= 0 ? ps.map(p => p.id === updated.id ? updated : p) : [...ps, updated];
     });
+  };
+  const exportAllProjects = () => {
+    const blob = new Blob([JSON.stringify({ version: "2.0", exported: new Date().toISOString(), projects }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `survey_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  };
+
+  const importProjects = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        const imported = data.projects ?? (Array.isArray(data) ? data : []);
+        if (!imported.length) { alert("No projects found in this file."); return; }
+        setProjects(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newOnes = imported.filter(p => !existingIds.has(p.id));
+          const merged = [...prev, ...newOnes];
+          alert(`✓ Imported ${newOnes.length} new project(s). ${imported.length - newOnes.length} duplicate(s) skipped.`);
+          return merged;
+        });
+      } catch {
+        alert("Invalid backup file. Please use a file exported from Survey AI.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const exportCurrentProject = () => {
+    if (!currentProject) return;
+    const blob = new Blob([JSON.stringify({ version: "2.0", exported: new Date().toISOString(), projects: [currentProject] }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentProject.name.replace(/\s+/g, "_")}.json`;
+    a.click();
   };
 
   const NAV = [
@@ -899,7 +1583,9 @@ export default function App() {
               <LevelingModule surveyType={surveyType} beginner={beginner} project={currentProject} onProjectChange={handleProjectChange} />
             )}
             {surveyType?.id === "crosssection" && <ComingSoonModule type={surveyType} />}
-            {surveyType?.id === "traverse" && <ComingSoonModule type={surveyType} />}
+            {surveyType?.id === "traverse" && (
+              <TraverseModule surveyType={surveyType} beginner={beginner} project={currentProject} onProjectChange={handleProjectChange} />
+            )}
             {surveyType?.id === "area" && <ComingSoonModule type={surveyType} />}
           </>
         )}
@@ -911,6 +1597,10 @@ export default function App() {
             onNew={() => { setScreen("wizard"); setActiveNav("home"); }}
             onLoad={(p) => { setCurrentProject(p); setSurveyType(SURVEY_TYPES.find(t => t.id === p.type)); setScreen("survey"); setActiveNav("survey"); }}
             onDelete={(id) => setProjects(ps => ps.filter(p => p.id !== id))}
+            onExportAll={exportAllProjects}
+            onImport={importProjects}
+            onExportCurrent={exportCurrentProject}
+            currentProject={currentProject}
           />
         )}
         {screen === "settings" && <SettingsModule beginner={beginner} setBeginner={setBeginner} />}
